@@ -44,17 +44,43 @@ function csvEscape(value) {
   return `"${String(value || "").replaceAll('"', '""')}"`;
 }
 
+function latestLog(item) {
+  const logs = Array.isArray(item.logs) ? item.logs : [];
+  return logs
+    .filter((log) => log.date || log.text)
+    .slice()
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
+}
+
+function logsToText(item) {
+  const logs = Array.isArray(item.logs) ? item.logs : [];
+  return logs
+    .filter((log) => log.date || log.text)
+    .map((log) => `${log.date || "日付未入力"} ${log.text || ""}`.trim())
+    .join("\n");
+}
+
 function exportCsv() {
   const headers = [
     "アプリ名", "案件タイトル", "サイト名", "報酬", "元ページURL", "インストール日",
-    "開始日", "期限", "状態", "現在の進行度", "問い合わせ番号", "達成条件", "メモ", "作成日時", "更新日時"
+    "開始日", "期限", "状態", "現在の進行度", "問い合わせ番号", "達成条件", "メモ", "最新ログ", "進行ログ", "作成日時", "更新日時"
   ];
   const keys = [
     "appName", "title", "siteName", "reward", "url", "installDate",
-    "startDate", "deadline", "status", "progress", "inquiryNo", "condition", "memo", "createdAt", "updatedAt"
+    "startDate", "deadline", "status", "progress", "inquiryNo", "condition", "memo"
   ];
   const rows = [headers.map(csvEscape).join(",")];
-  allItems.forEach((item) => rows.push(keys.map((key) => csvEscape(item[key])).join(",")));
+  allItems.forEach((item) => {
+    const log = latestLog(item);
+    const values = [
+      ...keys.map((key) => item[key]),
+      log ? `${log.date || "日付未入力"} ${log.text || ""}`.trim() : "",
+      logsToText(item),
+      item.createdAt,
+      item.updatedAt
+    ];
+    rows.push(values.map(csvEscape).join(","));
+  });
   downloadText(`poi-app-tracker-${new Date().toISOString().slice(0, 10)}.csv`, `\ufeff${rows.join("\n")}`, "text/csv;charset=utf-8");
   $("#backupMessage").textContent = "CSVを出力しました。";
 }
@@ -63,7 +89,7 @@ function exportJson() {
   const payload = {
     app: "アプリ進行中",
     repository: "poi-app-tracker",
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     storageKey: STORAGE_KEY,
     items: allItems
@@ -102,7 +128,7 @@ function getFilteredItems() {
   const sortMode = $("#sortMode").value;
 
   const filtered = allItems.filter((item) => {
-    const haystack = [item.appName, item.title, item.siteName, item.memo, item.condition, item.progress, item.inquiryNo]
+    const haystack = [item.appName, item.title, item.siteName, item.memo, item.condition, item.progress, item.inquiryNo, logsToText(item)]
       .join(" ")
       .toLowerCase();
     return (!query || haystack.includes(query)) && (!status || item.status === status);
@@ -126,6 +152,7 @@ function render() {
   $("#items").innerHTML = filtered.map((item) => {
     const title = item.appName || item.title || "名称未設定";
     const info = deadlineInfo(item.deadline);
+    const log = latestLog(item);
     return `
       <article class="item-card ${info.className === "expired" ? "is-expired" : ""}">
         <div class="item-main">
@@ -142,6 +169,7 @@ function render() {
           </div>
           ${item.progress ? `<p class="item-note">進行度：${escapeHtml(item.progress)}</p>` : ""}
           ${item.inquiryNo ? `<p class="item-note">問い合わせ番号：${escapeHtml(item.inquiryNo)}</p>` : ""}
+          ${log ? `<p class="item-note latest-log">最新ログ：<strong>${escapeHtml(log.date || "日付未入力")}</strong> ${escapeHtml(log.text || "")}</p>` : ""}
           ${item.condition ? `<p class="item-note">条件：${escapeHtml(item.condition)}</p>` : ""}
           ${item.memo ? `<p class="item-note">メモ：${escapeHtml(item.memo)}</p>` : ""}
         </div>

@@ -170,3 +170,39 @@ textarea { resize: vertical; }
   .backup-card, .summary-grid { grid-template-columns: 1fr; }
   .toolbar { grid-template-columns: 1fr; }
 }
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.section-heading h3 { margin: 0; }
+.log-list { display: grid; gap: 10px; }
+.log-editor {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+}
+.empty-inline {
+  margin: 0;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+.latest-log {
+  border-left: 4px solid #bfdbfe;
+  padding-left: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+@media (max-width: 720px) {
+  .section-heading, .log-editor { grid-template-columns: 1fr; display: grid; }
+}

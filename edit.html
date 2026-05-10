@@ -17,7 +17,7 @@
   <main class="container">
     <section class="card">
       <h2 id="pageTitle">案件登録</h2>
-      <p class="muted">サイト名・インストール日・条件などを記録できます。</p>
+      <p class="muted">サイト名・インストール日・条件・日付つき進行ログなどを記録できます。</p>
 
       <form id="itemForm" class="form-grid">
         <input type="hidden" id="id" />
@@ -95,6 +95,18 @@
           進行メモ
           <textarea id="memo" rows="5" placeholder="進行状況、注意点、問い合わせ内容など"></textarea>
         </label>
+
+        <section class="full log-section">
+          <div class="section-heading">
+            <div>
+              <h3>進行ログ</h3>
+              <p class="muted">日ごとのレベル、チャプター、達成報告、問い合わせ内容などを残せます。</p>
+            </div>
+            <button type="button" id="addLog" class="secondary compact">+ ログを追加</button>
+          </div>
+          <div id="logList" class="log-list"></div>
+          <p class="muted">例：2026-05-10 インストール。チュートリアル完了。Lv.8。</p>
+        </section>
 
         <section class="full preview-card" id="linkPreview">
           <div>

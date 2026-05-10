@@ -18,6 +18,19 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeLogs(logs) {
+  if (!Array.isArray(logs)) return [];
+  return logs
+    .map((log) => ({
+      id: log.id || createId(),
+      date: log.date || "",
+      text: log.text || "",
+      createdAt: log.createdAt || new Date().toISOString()
+    }))
+    .filter((log) => log.date || log.text)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function normalizeItem(item) {
   const now = new Date().toISOString();
   return {
@@ -35,6 +48,7 @@ function normalizeItem(item) {
     inquiryNo: item.inquiryNo || "",
     condition: item.condition || "",
     memo: item.memo || "",
+    logs: normalizeLogs(item.logs),
     createdAt: item.createdAt || now,
     updatedAt: item.updatedAt || now
   };
