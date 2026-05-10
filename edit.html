@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>案件編集 - アプリ進行中</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>アプリ進行中</h1>
+    <nav>
+      <a href="list.html">案件一覧</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2 id="pageTitle">案件登録</h2>
+      <p class="muted">サイト名・インストール日・条件などを記録できます。</p>
+
+      <form id="itemForm" class="form-grid">
+        <input type="hidden" id="id" />
+
+        <label>
+          アプリ名
+          <input id="appName" type="text" placeholder="例：ドミノドリームス" />
+        </label>
+
+        <label>
+          案件タイトル
+          <input id="title" type="text" placeholder="ページタイトルを自動入力" />
+        </label>
+
+        <label>
+          サイト名
+          <input id="siteName" type="text" placeholder="例：モッピー、ワラウ、アメフリ" />
+        </label>
+
+        <label>
+          報酬
+          <input id="reward" type="text" placeholder="例：1200円相当、1500pt" />
+        </label>
+
+        <label class="full">
+          元ページURL
+          <input id="url" type="url" placeholder="https://..." />
+        </label>
+
+        <label>
+          インストール日
+          <input id="installDate" type="date" />
+        </label>
+
+        <label>
+          開始日
+          <input id="startDate" type="date" />
+        </label>
+
+        <label>
+          期限
+          <input id="deadline" type="date" />
+        </label>
+
+        <label>
+          状態
+          <select id="status">
+            <option value="未インストール">未インストール</option>
+            <option value="進行中" selected>進行中</option>
+            <option value="達成">達成</option>
+            <option value="承認待ち">承認待ち</option>
+            <option value="却下">却下</option>
+            <option value="問い合わせ中">問い合わせ中</option>
+            <option value="撤退">撤退</option>
+            <option value="保留">保留</option>
+          </select>
+        </label>
+
+        <label>
+          現在の進行度
+          <input id="progress" type="text" placeholder="例：Lv.25、チャプター4、承認待ち" />
+        </label>
+
+        <label>
+          問い合わせ番号
+          <input id="inquiryNo" type="text" placeholder="問い合わせ中の管理番号など" />
+        </label>
+
+        <label class="full">
+          達成条件
+          <textarea id="condition" rows="3" placeholder="例：9日以内にチャプター7到達"></textarea>
+        </label>
+
+        <label class="full">
+          進行メモ
+          <textarea id="memo" rows="5" placeholder="進行状況、注意点、問い合わせ内容など"></textarea>
+        </label>
+
+        <section class="full preview-card" id="linkPreview">
+          <div>
+            <div class="preview-title" id="previewTitle">リンクカード</div>
+            <div class="preview-url" id="previewUrl"></div>
+          </div>
+          <a id="previewOpen" href="#" target="_blank" rel="noreferrer">元ページを開く</a>
+        </section>
+
+        <div class="actions full">
+          <button type="submit" class="primary">保存する</button>
+          <a class="secondary link-button" href="list.html">一覧へ戻る</a>
+        </div>
+      </form>
+
+      <p id="message" class="message"></p>
+    </section>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="edit.js"></script>
+</body>
+</html>
