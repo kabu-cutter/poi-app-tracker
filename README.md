@@ -2,6 +2,7 @@
 
 ポイ活ゲームアプリ案件の進行状況を記録・管理するChrome拡張です。
 Chromeウェブストアでの表示名は **アプリ進行中** です。
+https://chromewebstore.google.com/detail/pjndakeckbgbacfeaikbflnclgfbcklf?utm_source=item-share-cb
 
 ## 主な機能
 
