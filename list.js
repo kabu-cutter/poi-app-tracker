@@ -93,37 +93,48 @@ async function saveAutoBackup(reason = "manual-safety") {
 
 async function markVersionSeenAndSnapshotIfNeeded() {
   const meta = await getBackupMeta();
-  if (meta.lastSeenVersion === APP_VERSION) return meta;
+  const existingSnapshot = await getAutoBackup();
+  const versionChanged = meta.lastSeenVersion !== APP_VERSION;
+  const missingAutoSnapshot = !existingSnapshot || !Array.isArray(existingSnapshot.items) || !existingSnapshot.items.length;
+  const canCreateSnapshot = Array.isArray(allItems) && allItems.length > 0;
+
+  if (!versionChanged && (!missingAutoSnapshot || !canCreateSnapshot)) return meta;
 
   const now = new Date().toISOString();
-  const snapshot = {
-    app: "アプリ進行中",
-    repository: "poi-app-tracker",
-    snapshotType: "version-update",
-    appVersion: APP_VERSION,
-    previousSeenVersion: meta.lastSeenVersion || "",
-    savedAt: now,
-    storageKey: STORAGE_KEY,
-    itemCount: allItems.length,
-    items: allItems
-  };
+  const nextMeta = { ...meta };
+  const valuesToSet = {};
 
-  const nextMeta = {
-    ...meta,
-    lastSeenVersion: APP_VERSION,
-    lastUpdateDetectedAt: now,
-    lastUpdateDetectedVersion: APP_VERSION,
-    previousSeenVersion: meta.lastSeenVersion || "",
-    backupNoticeDismissedForVersion: "",
-    lastAutoSnapshotAt: now,
-    lastAutoSnapshotVersion: APP_VERSION,
-    lastAutoSnapshotItemCount: allItems.length
-  };
+  if (versionChanged) {
+    nextMeta.lastSeenVersion = APP_VERSION;
+    nextMeta.lastUpdateDetectedAt = now;
+    nextMeta.lastUpdateDetectedVersion = APP_VERSION;
+    nextMeta.previousSeenVersion = meta.lastSeenVersion || "";
+    nextMeta.backupNoticeDismissedForVersion = "";
+  }
 
-  await setLocal({
-    [AUTO_BACKUP_KEY]: snapshot,
-    [BACKUP_META_KEY]: nextMeta
-  });
+  // 既存案件があるのに内部控えがない場合は、バージョン更新時でなくても初回一覧表示で作成する。
+  // ただし案件が0件のときは、既存の内部控えを空データで上書きしない。
+  if (canCreateSnapshot && (versionChanged || missingAutoSnapshot)) {
+    const snapshot = {
+      app: "アプリ進行中",
+      repository: "poi-app-tracker",
+      snapshotType: versionChanged ? "version-update" : "initial-auto-backup",
+      appVersion: APP_VERSION,
+      previousSeenVersion: meta.lastSeenVersion || "",
+      savedAt: now,
+      storageKey: STORAGE_KEY,
+      itemCount: allItems.length,
+      items: allItems
+    };
+
+    valuesToSet[AUTO_BACKUP_KEY] = snapshot;
+    nextMeta.lastAutoSnapshotAt = now;
+    nextMeta.lastAutoSnapshotVersion = APP_VERSION;
+    nextMeta.lastAutoSnapshotItemCount = allItems.length;
+  }
+
+  valuesToSet[BACKUP_META_KEY] = nextMeta;
+  await setLocal(valuesToSet);
 
   return nextMeta;
 }
@@ -135,7 +146,9 @@ async function renderBackupSafety() {
   const backupStatus = $("#backupStatus");
   const restoreButton = $("#restoreAutoBackup");
 
-  restoreButton.hidden = !snapshot || !snapshot.items.length;
+  const hasAutoBackup = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
+  restoreButton.hidden = !hasAutoBackup;
+  restoreButton.disabled = !hasAutoBackup;
 
   const lastBackupText = meta.lastBackupAt
     ? `最終JSONバックアップ: ${formatDateTime(meta.lastBackupAt)} / ${meta.lastBackupItemCount || 0}件 / v${meta.lastBackupVersion || "不明"}`
