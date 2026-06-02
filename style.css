@@ -269,6 +269,23 @@ textarea { resize: vertical; }
   line-height: 1.6;
 }
 
+.suggestion-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.suggestion-actions .compact {
+  white-space: nowrap;
+}
+
+.suggestion-discard {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
 .suggestion-info { border-color: #bfdbfe; }
 .suggestion-warning { border-color: #fbbf24; background: #fffbeb; }
 .suggestion-soft { border-color: #ddd6fe; background: #fbfaff; }
@@ -296,4 +313,6 @@ textarea { resize: vertical; }
 @media (max-width: 720px) {
   .section-heading, .log-editor { grid-template-columns: 1fr; display: grid; }
   .suggestion-item { grid-template-columns: 1fr; }
+  .suggestion-actions { justify-content: stretch; }
+  .suggestion-actions .compact { width: 100%; }
 }
