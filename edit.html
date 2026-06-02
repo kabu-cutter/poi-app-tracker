@@ -25,12 +25,19 @@
         <label>
           アプリ名
           <input id="appName" type="text" placeholder="例：ドミノドリームス" />
+          <span class="field-help">一覧で見つけやすい短い名前。ページタイトルから候補を入れます。</span>
         </label>
 
         <label>
           案件タイトル
           <input id="title" type="text" placeholder="ページタイトルを自動入力" />
+          <span class="field-help">元ページのタイトル。条件やサイト名が混ざっていても、そのまま残せます。</span>
         </label>
+
+        <section class="full suggestion-card" id="registrationHints" hidden>
+          <div class="suggestion-heading">登録前の確認</div>
+          <div id="registrationHintList" class="suggestion-list"></div>
+        </section>
 
         <label>
           サイト名
