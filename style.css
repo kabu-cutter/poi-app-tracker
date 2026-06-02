@@ -139,7 +139,7 @@ textarea { resize: vertical; }
 
 .full-row { grid-column: 1 / -1; }
 .emphasis { background: #dbeafe; color: #1e40af; }
-.toolbar { grid-template-columns: 1fr 190px 190px; }
+.toolbar { grid-template-columns: 1fr 160px 160px 190px; }
 
 .summary-grid {
   display: grid;
@@ -170,6 +170,21 @@ textarea { resize: vertical; }
   color: #374151;
   font-weight: 700;
 }
+
+.platform-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+}
+
+.platform-pill.ios { background: #eef2ff; color: #3730a3; }
+.platform-pill.android { background: #ecfdf5; color: #047857; }
+.platform-pill.both { background: #f5f3ff; color: #6d28d9; }
+.platform-pill.unknown { background: #f3f4f6; color: #6b7280; }
 
 .deadline { border-radius: 999px; padding: 2px 8px; }
 .deadline.normal { color: #1d4ed8; background: #eff6ff; }
@@ -315,4 +330,41 @@ textarea { resize: vertical; }
   .suggestion-item { grid-template-columns: 1fr; }
   .suggestion-actions { justify-content: stretch; }
   .suggestion-actions .compact { width: 100%; }
+}
+
+.backup-notice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px 18px;
+  align-items: center;
+  border: 1px solid #fbbf24;
+  background: #fffbeb;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.backup-notice[hidden] { display: none; }
+.backup-notice strong { color: #92400e; }
+.backup-notice p { margin: 6px 0 0; }
+.backup-notice-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.backup-status { margin: 0; }
+
+.popup-reminder {
+  border: 1px solid #fbbf24;
+  background: #fffbeb;
+  color: #78350f;
+  border-radius: 12px;
+  padding: 10px;
+  margin: 10px 0 12px;
+  line-height: 1.5;
+}
+
+.popup-reminder[hidden] { display: none; }
+.popup-reminder strong { display: block; margin-bottom: 4px; }
+.popup-reminder p { margin: 0; font-size: 12px; }
+
+@media (max-width: 720px) {
+  .backup-notice { grid-template-columns: 1fr; }
+  .backup-notice-actions { justify-content: stretch; }
+  .backup-notice-actions .compact { width: 100%; }
 }

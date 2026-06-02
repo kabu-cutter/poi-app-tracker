@@ -1,6 +1,176 @@
 const $ = (selector) => document.querySelector(selector);
 let allItems = [];
 
+const APP_VERSION = chrome.runtime.getManifest().version;
+const BACKUP_META_KEY = "appProgressBackupMeta";
+const AUTO_BACKUP_KEY = "appProgressItemsAutoBackup";
+
+function getLocal(keys) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(keys, resolve);
+  });
+}
+
+function setLocal(values) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(values, resolve);
+  });
+}
+
+function removeLocal(keys) {
+  return new Promise((resolve) => {
+    chrome.storage.local.remove(keys, resolve);
+  });
+}
+
+function formatDateTime(value) {
+  if (!value) return "未作成";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未作成";
+  return date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function buildBackupPayload(exportedAt = new Date().toISOString()) {
+  return {
+    app: "アプリ進行中",
+    repository: "poi-app-tracker",
+    version: 4,
+    appVersion: APP_VERSION,
+    exportedAt,
+    storageKey: STORAGE_KEY,
+    items: allItems
+  };
+}
+
+async function getBackupMeta() {
+  const result = await getLocal([BACKUP_META_KEY]);
+  return result[BACKUP_META_KEY] && typeof result[BACKUP_META_KEY] === "object"
+    ? result[BACKUP_META_KEY]
+    : {};
+}
+
+async function setBackupMeta(meta) {
+  await setLocal({ [BACKUP_META_KEY]: meta });
+}
+
+async function getAutoBackup() {
+  const result = await getLocal([AUTO_BACKUP_KEY]);
+  const snapshot = result[AUTO_BACKUP_KEY];
+  if (!snapshot || !Array.isArray(snapshot.items)) return null;
+  return snapshot;
+}
+
+async function saveAutoBackup(reason = "manual-safety") {
+  const now = new Date().toISOString();
+  const meta = await getBackupMeta();
+  const snapshot = {
+    app: "アプリ進行中",
+    repository: "poi-app-tracker",
+    snapshotType: reason,
+    appVersion: APP_VERSION,
+    previousSeenVersion: meta.lastSeenVersion || "",
+    savedAt: now,
+    storageKey: STORAGE_KEY,
+    itemCount: allItems.length,
+    items: allItems
+  };
+
+  await setLocal({ [AUTO_BACKUP_KEY]: snapshot });
+  await setBackupMeta({
+    ...meta,
+    lastAutoSnapshotAt: now,
+    lastAutoSnapshotVersion: APP_VERSION,
+    lastAutoSnapshotItemCount: allItems.length
+  });
+  return snapshot;
+}
+
+async function markVersionSeenAndSnapshotIfNeeded() {
+  const meta = await getBackupMeta();
+  if (meta.lastSeenVersion === APP_VERSION) return meta;
+
+  const now = new Date().toISOString();
+  const snapshot = {
+    app: "アプリ進行中",
+    repository: "poi-app-tracker",
+    snapshotType: "version-update",
+    appVersion: APP_VERSION,
+    previousSeenVersion: meta.lastSeenVersion || "",
+    savedAt: now,
+    storageKey: STORAGE_KEY,
+    itemCount: allItems.length,
+    items: allItems
+  };
+
+  const nextMeta = {
+    ...meta,
+    lastSeenVersion: APP_VERSION,
+    lastUpdateDetectedAt: now,
+    lastUpdateDetectedVersion: APP_VERSION,
+    previousSeenVersion: meta.lastSeenVersion || "",
+    backupNoticeDismissedForVersion: "",
+    lastAutoSnapshotAt: now,
+    lastAutoSnapshotVersion: APP_VERSION,
+    lastAutoSnapshotItemCount: allItems.length
+  };
+
+  await setLocal({
+    [AUTO_BACKUP_KEY]: snapshot,
+    [BACKUP_META_KEY]: nextMeta
+  });
+
+  return nextMeta;
+}
+
+async function renderBackupSafety() {
+  const meta = await getBackupMeta();
+  const snapshot = await getAutoBackup();
+  const notice = $("#backupSafetyNotice");
+  const backupStatus = $("#backupStatus");
+  const restoreButton = $("#restoreAutoBackup");
+
+  restoreButton.hidden = !snapshot || !snapshot.items.length;
+
+  const lastBackupText = meta.lastBackupAt
+    ? `最終JSONバックアップ: ${formatDateTime(meta.lastBackupAt)} / ${meta.lastBackupItemCount || 0}件 / v${meta.lastBackupVersion || "不明"}`
+    : "最終JSONバックアップ: 未作成";
+  const autoBackupText = snapshot
+    ? `内部控え: ${formatDateTime(snapshot.savedAt)} / ${snapshot.itemCount || snapshot.items.length}件 / v${snapshot.appVersion || "不明"}`
+    : "内部控え: 未作成";
+  backupStatus.textContent = `${lastBackupText}。${autoBackupText}。`;
+
+  if (!allItems.length) {
+    notice.hidden = true;
+    return;
+  }
+
+  const dismissed = meta.backupNoticeDismissedForVersion === APP_VERSION;
+  const noJsonBackup = !meta.lastBackupAt;
+  const updatedNeedsBackup = meta.lastUpdateDetectedVersion === APP_VERSION
+    && meta.lastBackupVersion !== APP_VERSION;
+
+  if (dismissed || (!noJsonBackup && !updatedNeedsBackup)) {
+    notice.hidden = true;
+    return;
+  }
+
+  $("#backupSafetyTitle").textContent = noJsonBackup
+    ? "バックアップ未作成です"
+    : `v${APP_VERSION}に更新されました`;
+  $("#backupSafetyText").textContent = noJsonBackup
+    ? "案件データはこのChrome内に保存されています。拡張機能の削除、Chromeプロファイル変更、ストレージ削除に備えて、JSONバックアップを書き出しておくことをおすすめします。"
+    : "通常の拡張機能更新でデータが消える想定ではありませんが、念のためJSONバックアップを書き出しておくことをおすすめします。";
+  $("#backupSafetyMeta").textContent = autoBackupText;
+  notice.hidden = false;
+}
+
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -60,6 +230,46 @@ function logsToText(item) {
     .join("\n");
 }
 
+
+function platformInfo(item) {
+  const text = [
+    item.appName,
+    item.title,
+    item.siteName,
+    item.url,
+    item.condition,
+    item.memo,
+    item.progress,
+    logsToText(item)
+  ].join(" ");
+  const normalized = text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[＿_./?&=+#%:;|()[\]{}]/g, " ")
+    .replace(/[\s\-]+/g, " ")
+    .trim();
+
+  const hasIos = /(^|\s)(ios|iphone|ipad|apple)(\s|$)/.test(normalized)
+    || normalized.includes("app store")
+    || normalized.includes("itunes");
+  const hasAndroid = /(^|\s)(android|apk)(\s|$)/.test(normalized)
+    || normalized.includes("google play")
+    || normalized.includes("play google");
+
+  if (hasIos && hasAndroid) return { value: "both", label: "iOS + Android", className: "both" };
+  if (hasIos) return { value: "ios", label: "iOS", className: "ios" };
+  if (hasAndroid) return { value: "android", label: "Android", className: "android" };
+  return { value: "unknown", label: "OS未判定", className: "unknown" };
+}
+
+function matchesPlatform(item, selectedPlatform) {
+  if (!selectedPlatform) return true;
+  const platform = platformInfo(item).value;
+  if (selectedPlatform === "ios") return platform === "ios" || platform === "both";
+  if (selectedPlatform === "android") return platform === "android" || platform === "both";
+  return platform === selectedPlatform;
+}
+
 function exportCsv() {
   const headers = [
     "アプリ名", "案件タイトル", "サイト名", "報酬", "元ページURL", "インストール日",
@@ -85,21 +295,26 @@ function exportCsv() {
   $("#backupMessage").textContent = "CSVを出力しました。";
 }
 
-function exportJson() {
-  const payload = {
-    app: "アプリ進行中",
-    repository: "poi-app-tracker",
-    version: 3,
-    exportedAt: new Date().toISOString(),
-    storageKey: STORAGE_KEY,
-    items: allItems
-  };
+async function exportJson() {
+  const exportedAt = new Date().toISOString();
+  const payload = buildBackupPayload(exportedAt);
   downloadText(
-    `poi-app-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    `poi-app-tracker-backup-${exportedAt.slice(0, 10)}.json`,
     JSON.stringify(payload, null, 2),
     "application/json;charset=utf-8"
   );
+
+  const meta = await getBackupMeta();
+  await setBackupMeta({
+    ...meta,
+    lastSeenVersion: APP_VERSION,
+    lastBackupAt: exportedAt,
+    lastBackupVersion: APP_VERSION,
+    lastBackupItemCount: allItems.length,
+    backupNoticeDismissedForVersion: APP_VERSION
+  });
   $("#backupMessage").textContent = "バックアップJSONを出力しました。";
+  await renderBackupSafety();
 }
 
 function parseImportJson(text) {
@@ -125,13 +340,28 @@ function renderSummary(items) {
 function getFilteredItems() {
   const query = $("#search").value.trim().toLowerCase();
   const status = $("#statusFilter").value;
+  const platform = $("#platformFilter").value;
   const sortMode = $("#sortMode").value;
 
   const filtered = allItems.filter((item) => {
-    const haystack = [item.appName, item.title, item.siteName, item.memo, item.condition, item.progress, item.inquiryNo, logsToText(item)]
+    const platformDetected = platformInfo(item);
+    const haystack = [
+      item.appName,
+      item.title,
+      item.siteName,
+      item.memo,
+      item.condition,
+      item.progress,
+      item.inquiryNo,
+      logsToText(item),
+      platformDetected.label,
+      platformDetected.value
+    ]
       .join(" ")
       .toLowerCase();
-    return (!query || haystack.includes(query)) && (!status || item.status === status);
+    return (!query || haystack.includes(query))
+      && (!status || item.status === status)
+      && matchesPlatform(item, platform);
   });
 
   filtered.sort((a, b) => {
@@ -152,6 +382,7 @@ function render() {
   $("#items").innerHTML = filtered.map((item) => {
     const title = item.appName || item.title || "名称未設定";
     const info = deadlineInfo(item.deadline);
+    const platform = platformInfo(item);
     const log = latestLog(item);
     return `
       <article class="item-card ${info.className === "expired" ? "is-expired" : ""}">
@@ -160,6 +391,7 @@ function render() {
           <div class="item-meta">
             <span>サイト：${escapeHtml(item.siteName || "未入力")}</span>
             <span>報酬：${escapeHtml(item.reward || "未入力")}</span>
+            <span class="platform-pill ${escapeHtml(platform.className)}">${escapeHtml(platform.label)}</span>
             <span class="status-pill">${escapeHtml(item.status || "未設定")}</span>
           </div>
           <div class="item-meta">
@@ -185,23 +417,50 @@ function render() {
   document.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
       if (!confirm("この案件を削除しますか？")) return;
+      await saveAutoBackup("before-delete");
       await deleteItem(button.dataset.delete);
       allItems = await getItems();
       render();
+      await renderBackupSafety();
     });
   });
 }
 
 async function load() {
   allItems = await getItems();
+  await markVersionSeenAndSnapshotIfNeeded();
   render();
+  await renderBackupSafety();
 }
 
 $("#search").addEventListener("input", render);
 $("#statusFilter").addEventListener("change", render);
+$("#platformFilter").addEventListener("change", render);
 $("#sortMode").addEventListener("change", render);
 $("#exportCsv").addEventListener("click", exportCsv);
-$("#exportJson").addEventListener("click", exportJson);
+$("#exportJson").addEventListener("click", () => exportJson());
+$("#backupSafetyExport").addEventListener("click", () => exportJson());
+$("#backupSafetyLater").addEventListener("click", async () => {
+  const meta = await getBackupMeta();
+  await setBackupMeta({ ...meta, backupNoticeDismissedForVersion: APP_VERSION });
+  await renderBackupSafety();
+  $("#backupMessage").textContent = "バックアップ案内をいったん閉じました。JSON出力ボタンはいつでも使えます。";
+});
+$("#restoreAutoBackup").addEventListener("click", async () => {
+  const snapshot = await getAutoBackup();
+  if (!snapshot || !Array.isArray(snapshot.items) || !snapshot.items.length) {
+    $("#backupMessage").textContent = "復元できる内部控えがありません。";
+    return;
+  }
+  const label = `${formatDateTime(snapshot.savedAt)} / ${snapshot.items.length}件`;
+  if (!confirm(`内部控え（${label}）で現在の案件データを置き換えます。よろしいですか？`)) return;
+  await saveAutoBackup("before-auto-backup-restore");
+  const count = await replaceItems(snapshot.items);
+  allItems = await getItems();
+  render();
+  await renderBackupSafety();
+  $("#backupMessage").textContent = `内部控えから${count}件を復元しました。`;
+});
 $("#importJson").addEventListener("click", () => $("#importFile").click());
 $("#importFile").addEventListener("change", async (event) => {
   const file = event.target.files[0];
@@ -210,10 +469,12 @@ $("#importFile").addEventListener("change", async (event) => {
     const text = await file.text();
     const imported = parseImportJson(text);
     if (!confirm(`現在の案件データを、読み込んだ${imported.length}件のデータで置き換えます。よろしいですか？`)) return;
+    await saveAutoBackup("before-json-import");
     const count = await replaceItems(imported);
     allItems = await getItems();
     render();
-    $("#backupMessage").textContent = `${count}件のデータを復元しました。`;
+    await renderBackupSafety();
+    $("#backupMessage").textContent = `${count}件のデータを復元しました。復元前の内部控えも保存しています。`;
   } catch (error) {
     $("#backupMessage").textContent = `復元できませんでした: ${error.message}`;
   } finally {

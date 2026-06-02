@@ -25,13 +25,26 @@
         <button id="exportCsv" class="secondary compact">CSV出力</button>
         <button id="exportJson" class="secondary compact emphasis">バックアップJSON出力</button>
         <button id="importJson" class="secondary compact">JSON復元</button>
+        <button id="restoreAutoBackup" class="secondary compact" hidden>内部控えから復元</button>
         <input id="importFile" type="file" accept="application/json,.json" hidden />
       </div>
+      <section id="backupSafetyNotice" class="backup-notice full-row" hidden>
+        <div>
+          <strong id="backupSafetyTitle">バックアップをおすすめします</strong>
+          <p id="backupSafetyText" class="muted"></p>
+          <p id="backupSafetyMeta" class="muted"></p>
+        </div>
+        <div class="backup-notice-actions">
+          <button id="backupSafetyExport" class="secondary compact emphasis">JSONバックアップを書き出す</button>
+          <button id="backupSafetyLater" class="ghost compact">あとで</button>
+        </div>
+      </section>
+      <p id="backupStatus" class="backup-status muted full-row"></p>
       <p id="backupMessage" class="message full-row"></p>
     </section>
 
     <section class="toolbar card">
-      <input id="search" type="search" placeholder="アプリ名・サイト名・メモで検索" />
+      <input id="search" type="search" placeholder="アプリ名・サイト名・OS・メモで検索" />
       <select id="statusFilter">
         <option value="">すべて</option>
         <option value="未インストール">未インストール</option>
@@ -42,6 +55,13 @@
         <option value="問い合わせ中">問い合わせ中</option>
         <option value="撤退">撤退</option>
         <option value="保留">保留</option>
+      </select>
+      <select id="platformFilter">
+        <option value="">OSすべて</option>
+        <option value="ios">iOS</option>
+        <option value="android">Android</option>
+        <option value="both">iOS + Android</option>
+        <option value="unknown">未判定</option>
       </select>
       <select id="sortMode">
         <option value="deadline">期限が近い順</option>
