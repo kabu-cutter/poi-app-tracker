@@ -301,6 +301,17 @@ textarea { resize: vertical; }
   color: #6b7280;
 }
 
+.suggestion-undo {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.suggestion-applied {
+  background: #f8fbff;
+  border-color: #93c5fd;
+}
+
 .suggestion-info { border-color: #bfdbfe; }
 .suggestion-warning { border-color: #fbbf24; background: #fffbeb; }
 .suggestion-soft { border-color: #ddd6fe; background: #fbfaff; }
