@@ -143,7 +143,7 @@ async function renderBackupSafety() {
   const autoBackupText = snapshot
     ? `内部控え: ${formatDateTime(snapshot.savedAt)} / ${snapshot.itemCount || snapshot.items.length}件 / v${snapshot.appVersion || "不明"}`
     : "内部控え: 未作成";
-  backupStatus.textContent = `${lastBackupText}。${autoBackupText}。`;
+  backupStatus.textContent = `${lastBackupText}。${autoBackupText}。内部控えは拡張機能内の簡易バックアップです。削除・入れ直し・別PC移行の前はJSONバックアップを書き出してください。`;
 
   if (!allItems.length) {
     notice.hidden = true;
@@ -166,7 +166,7 @@ async function renderBackupSafety() {
   $("#backupSafetyText").textContent = noJsonBackup
     ? "案件データはこのChrome内に保存されています。拡張機能の削除、Chromeプロファイル変更、ストレージ削除に備えて、JSONバックアップを書き出しておくことをおすすめします。"
     : "通常の拡張機能更新でデータが消える想定ではありませんが、念のためJSONバックアップを書き出しておくことをおすすめします。";
-  $("#backupSafetyMeta").textContent = autoBackupText;
+  $("#backupSafetyMeta").textContent = `${autoBackupText}。内部控えはこの拡張機能の中に保存される簡易バックアップです。拡張機能を削除すると内部控えも一緒に消える場合があります。削除・入れ直し・別PC移行の前には、必ずJSONバックアップを書き出してください。`;
   notice.hidden = false;
 }
 
