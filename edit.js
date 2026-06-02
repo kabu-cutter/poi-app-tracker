@@ -23,6 +23,11 @@ let currentEditId = "";
 let lastSuggestedAppName = "";
 let lastSuggestedSiteName = "";
 let dismissedRegistrationHintKeys = new Set();
+let appliedRegistrationHints = new Map();
+let pageExtractedAppName = "";
+let pageExtractedPlatform = "";
+let pageExtractedTitle = "";
+let pageExtractedSource = "";
 
 function getParams() {
   return new URLSearchParams(location.search);
@@ -51,6 +56,36 @@ function normalizeSpaces(value) {
     .replace(/[\u3000\t\r\n]+/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function normalizePlatform(value) {
+  const text = String(value || "").toLowerCase();
+  if (["ios", "iphone", "ipad"].includes(text)) return "ios";
+  if (text === "android") return "android";
+  if (["both", "ios+android", "android+ios", "ios / android", "android / ios"].includes(text)) return "both";
+  if (/ios|iphone|ipad/.test(text) && /android/.test(text)) return "both";
+  if (/ios|iphone|ipad/.test(text)) return "ios";
+  if (/android/.test(text)) return "android";
+  return "";
+}
+
+function platformDisplayName(value) {
+  const platform = normalizePlatform(value);
+  if (platform === "ios") return "iOS";
+  if (platform === "android") return "Android";
+  if (platform === "both") return "iOS + Android";
+  return "";
+}
+
+function valueHasPlatform(value) {
+  return /(iOS|iPhone|iPad|Android)/i.test(String(value || ""));
+}
+
+function appendPlatformToCandidate(value, platform) {
+  const text = normalizeSpaces(value);
+  const label = platformDisplayName(platform);
+  if (!text || !label || valueHasPlatform(text)) return text;
+  return `${text} ${label}`;
 }
 
 function stripKnownSiteWords(value) {
@@ -152,7 +187,8 @@ const URL_STOP_WORDS = new Set([
   "offer", "offers", "detail", "details", "campaign", "campaigns", "cp",
   "point", "points", "poikatsu", "reward", "rewards", "ad", "ads", "pr",
   "app", "apps", "game", "games", "lp", "item", "items", "entry", "entries",
-  "show", "view", "open", "click", "redirect", "link", "tracking", "track"
+  "show", "view", "open", "click", "redirect", "link", "tracking", "track",
+  "index", "html", "cdn", "static", "assets", "asset", "content", "contents"
 ]);
 
 function isLikelyUrlIdToken(token) {
@@ -284,17 +320,28 @@ function getUrlAppNameCandidates(url) {
   return candidates;
 }
 
-function buildAppNameSuggestions(title, url = "") {
+function getPageAppNameCandidates(pageAppName, platform = "") {
+  const candidates = [];
+  const pageValue = appendPlatformToCandidate(pageAppName, platform);
+  const candidate = makeAppNameCandidate(pageValue, "page-content", 118, "参照ページの表示内容から候補にしました。");
+  if (candidate) candidates.push(candidate);
+  return candidates;
+}
+
+function buildAppNameSuggestions(title, url = "", pageAppName = "", platform = "") {
+  const pageCandidates = getPageAppNameCandidates(pageAppName, platform);
   const titleCandidates = getTitleAppNameCandidates(title);
   const urlCandidates = getUrlAppNameCandidates(url);
-  const allCandidates = [...titleCandidates, ...urlCandidates];
+  const allCandidates = [...pageCandidates, ...titleCandidates, ...urlCandidates];
 
   allCandidates.forEach((candidate) => {
-    const oppositeCandidates = candidate.source.startsWith("url") ? titleCandidates : urlCandidates;
+    const oppositeCandidates = candidate.source.startsWith("url")
+      ? [...pageCandidates, ...titleCandidates]
+      : urlCandidates;
     const hasCloseMatch = oppositeCandidates.some((other) => candidateSimilarity(candidate.value, other.value) >= 0.85);
     if (hasCloseMatch) {
       candidate.score += 30;
-      candidate.reason = `${candidate.reason} ページタイトルとURLの両方に近い名前があるため、候補として強めに扱います。`;
+      candidate.reason = `${candidate.reason} ページ表示・タイトル・URLのうち複数に近い名前があるため、候補として強めに扱います。`;
     }
   });
 
@@ -309,8 +356,8 @@ function buildAppNameSuggestions(title, url = "") {
   return [...bestByKey.values()].sort((a, b) => b.score - a.score);
 }
 
-function guessAppName(title, url = "") {
-  const suggestions = buildAppNameSuggestions(title, url);
+function guessAppName(title, url = "", pageAppName = "", platform = "") {
+  const suggestions = buildAppNameSuggestions(title, url, pageAppName, platform);
   return suggestions[0]?.value || "";
 }
 
@@ -330,6 +377,7 @@ function guessSiteName(url) {
       ["colleee", "colleee"],
       ["gendama", "げん玉"],
       ["freecash", "Freecash"],
+      ["mychips", "MyChips"],
       ["torima", "トリマ"],
       ["poikatsu", "ポイ活サイト"],
       ["point", "ポイントサイト"]
@@ -402,22 +450,50 @@ function isHintDismissed(type, value) {
   return dismissedRegistrationHintKeys.has(hintKey(type, value));
 }
 
+function getAppliedHint(type, value) {
+  return appliedRegistrationHints.get(hintKey(type, value)) || null;
+}
+
+function isHintApplied(type, value, fieldId) {
+  const appliedHint = getAppliedHint(type, value);
+  return Boolean(appliedHint && getValue(fieldId) === appliedHint.appliedValue);
+}
+
+function rememberAppliedHint(type, value, fieldId) {
+  appliedRegistrationHints.set(hintKey(type, value), {
+    fieldId,
+    previousValue: getValue(fieldId),
+    appliedValue: value
+  });
+}
+
+function renderUndoButton(type, value) {
+  return `<button type="button" class="secondary compact suggestion-undo" data-undo-hint="${escapeAttribute(type)}" data-undo-value="${escapeAttribute(value)}">元に戻す</button>`;
+}
+
 function renderDiscardButton(type, value) {
   return `<button type="button" class="secondary compact suggestion-discard" data-discard-hint="${escapeAttribute(type)}" data-discard-value="${escapeAttribute(value)}">Discard</button>`;
 }
 
 function renderAppNameSuggestion(candidate, type) {
   if (!candidate || !candidate.value || isHintDismissed(type, candidate.value)) return "";
-  const label = candidate.source.startsWith("url") ? "URLからのアプリ名候補" : "アプリ名候補";
+  const label = candidate.source === "page-content"
+    ? "参照ページからのアプリ名候補"
+    : candidate.source.startsWith("url")
+      ? "URLからのアプリ名候補"
+      : "アプリ名候補";
+  const applied = isHintApplied(type, candidate.value, "appName");
   return `
-      <div class="suggestion-item suggestion-info">
+      <div class="suggestion-item suggestion-info${applied ? " suggestion-applied" : ""}" data-hint-type="${escapeAttribute(type)}">
         <div>
           <strong>${escapeHtml(label)}</strong>
-          <p>${escapeHtml(candidate.reason)} 「${escapeHtml(candidate.value)}」を候補にしました。</p>
+          <p>${escapeHtml(candidate.reason)} 「${escapeHtml(candidate.value)}」を候補にしました。${applied ? " 現在この候補を反映しています。" : ""}</p>
         </div>
         <div class="suggestion-actions">
-          <button type="button" class="secondary compact" data-apply-app-name="${escapeAttribute(candidate.value)}">候補を使う</button>
-          ${renderDiscardButton(type, candidate.value)}
+          ${applied
+            ? renderUndoButton(type, candidate.value)
+            : `<button type="button" class="secondary compact" data-apply-app-name="${escapeAttribute(candidate.value)}">候補を使う</button>
+              ${renderDiscardButton(type, candidate.value)}`}
         </div>
       </div>
     `;
@@ -432,7 +508,7 @@ function renderRegistrationHints() {
   const appName = getValue("appName");
   const url = getValue("url");
   const siteName = getValue("siteName");
-  const appNameSuggestions = buildAppNameSuggestions(title, url);
+  const appNameSuggestions = buildAppNameSuggestions(title, url, pageExtractedAppName, pageExtractedPlatform);
   const primaryAppNameSuggestion = appNameSuggestions[0] || null;
   const suggestedAppName = primaryAppNameSuggestion?.value || "";
   const urlAppNameSuggestion = appNameSuggestions.find((candidate) => {
@@ -447,26 +523,30 @@ function renderRegistrationHints() {
   const sameAppItems = findSameAppItems(appName || suggestedAppName);
   const hints = [];
 
-  if (primaryAppNameSuggestion && suggestedAppName !== appName) {
+  if (primaryAppNameSuggestion && (suggestedAppName !== appName || isHintApplied("app-name", suggestedAppName, "appName"))) {
     const hint = renderAppNameSuggestion(primaryAppNameSuggestion, "app-name");
     if (hint) hints.push(hint);
   }
 
-  if (urlAppNameSuggestion) {
-    const hint = renderAppNameSuggestion(urlAppNameSuggestion, "url-app-name");
+  if (urlAppNameSuggestion || isHintApplied("url-app-name", appName, "appName")) {
+    const appliedUrlCandidate = appNameSuggestions.find((candidate) => isHintApplied("url-app-name", candidate.value, "appName"));
+    const hint = renderAppNameSuggestion(urlAppNameSuggestion || appliedUrlCandidate, "url-app-name");
     if (hint) hints.push(hint);
   }
 
-  if (suggestedSiteName && suggestedSiteName !== siteName && !isHintDismissed("site-name", suggestedSiteName)) {
+  if (suggestedSiteName && (suggestedSiteName !== siteName || isHintApplied("site-name", suggestedSiteName, "siteName")) && !isHintDismissed("site-name", suggestedSiteName)) {
+    const siteApplied = isHintApplied("site-name", suggestedSiteName, "siteName");
     hints.push(`
-      <div class="suggestion-item suggestion-info">
+      <div class="suggestion-item suggestion-info${siteApplied ? " suggestion-applied" : ""}" data-hint-type="site-name">
         <div>
           <strong>サイト名候補</strong>
-          <p>URLから「${escapeHtml(suggestedSiteName)}」を候補にしました。</p>
+          <p>URLから「${escapeHtml(suggestedSiteName)}」を候補にしました。${siteApplied ? " 現在この候補を反映しています。" : ""}</p>
         </div>
         <div class="suggestion-actions">
-          <button type="button" class="secondary compact" data-apply-site-name="${escapeAttribute(suggestedSiteName)}">候補を使う</button>
-          ${renderDiscardButton("site-name", suggestedSiteName)}
+          ${siteApplied
+            ? renderUndoButton("site-name", suggestedSiteName)
+            : `<button type="button" class="secondary compact" data-apply-site-name="${escapeAttribute(suggestedSiteName)}">候補を使う</button>
+              ${renderDiscardButton("site-name", suggestedSiteName)}`}
         </div>
       </div>
     `);
@@ -501,16 +581,38 @@ function renderRegistrationHints() {
 
   list.querySelectorAll("[data-apply-app-name]").forEach((button) => {
     button.addEventListener("click", () => {
-      setValue("appName", button.dataset.applyAppName || "");
-      lastSuggestedAppName = button.dataset.applyAppName || "";
+      const value = button.dataset.applyAppName || "";
+      const suggestionItem = button.closest(".suggestion-item");
+      const type = suggestionItem?.dataset.hintType || (value === suggestedAppName ? "app-name" : "url-app-name");
+      rememberAppliedHint(type, value, "appName");
+      setValue("appName", value);
+      lastSuggestedAppName = value;
       updatePreview();
     });
   });
 
   list.querySelectorAll("[data-apply-site-name]").forEach((button) => {
     button.addEventListener("click", () => {
-      setValue("siteName", button.dataset.applySiteName || "");
-      lastSuggestedSiteName = button.dataset.applySiteName || "";
+      const value = button.dataset.applySiteName || "";
+      rememberAppliedHint("site-name", value, "siteName");
+      setValue("siteName", value);
+      lastSuggestedSiteName = value;
+      updatePreview();
+    });
+  });
+
+  list.querySelectorAll("[data-undo-hint]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = button.dataset.undoHint || "";
+      const value = button.dataset.undoValue || "";
+      const key = hintKey(type, value);
+      const appliedHint = appliedRegistrationHints.get(key);
+      if (appliedHint) {
+        setValue(appliedHint.fieldId, appliedHint.previousValue || "");
+        if (appliedHint.fieldId === "appName") lastSuggestedAppName = appliedHint.previousValue || "";
+        if (appliedHint.fieldId === "siteName") lastSuggestedSiteName = appliedHint.previousValue || "";
+        appliedRegistrationHints.delete(key);
+      }
       updatePreview();
     });
   });
@@ -529,7 +631,7 @@ function maybeUpdateAppNameFromTitle() {
   const title = getValue("title");
   const appName = getValue("appName");
   const url = getValue("url");
-  const suggestion = guessAppName(title, url);
+  const suggestion = guessAppName(title, url, pageExtractedAppName, pageExtractedPlatform);
   if (!suggestion) return;
 
   if (!appName || appName === lastSuggestedAppName) {
@@ -639,9 +741,15 @@ async function load() {
     lastSuggestedAppName = getValue("appName");
     lastSuggestedSiteName = getValue("siteName");
   } else {
-    const title = params.get("title") || "";
+    const rawTitle = params.get("title") || "";
     const url = params.get("url") || "";
-    const suggestedAppName = guessAppName(title, url);
+    pageExtractedAppName = params.get("pageAppName") || "";
+    pageExtractedPlatform = normalizePlatform(params.get("pagePlatform") || "");
+    pageExtractedTitle = params.get("pageTitle") || "";
+    pageExtractedSource = params.get("pageSource") || "";
+
+    const title = appendPlatformToCandidate(pageExtractedAppName || rawTitle, pageExtractedPlatform);
+    const suggestedAppName = guessAppName(title, url, pageExtractedAppName, pageExtractedPlatform);
     const suggestedSiteName = guessSiteName(url);
 
     setValue("title", title);

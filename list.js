@@ -223,6 +223,40 @@ function downloadText(filename, text, type = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
+function isFilePickerCancel(error) {
+  return error && (error.name === "AbortError" || error.code === DOMException.ABORT_ERR);
+}
+
+async function saveJsonBackupFile(filename, text) {
+  const type = "application/json;charset=utf-8";
+
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: "アプリ進行中 JSONバックアップ",
+            accept: { "application/json": [".json"] }
+          }
+        ]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([text], { type }));
+      await writable.close();
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      if (isFilePickerCancel(error)) {
+        return { saved: false, canceled: true };
+      }
+      console.warn("JSONバックアップの保存ダイアログを開けなかったため、通常ダウンロードに切り替えます。", error);
+    }
+  }
+
+  downloadText(filename, text, type);
+  return { saved: true, method: "download" };
+}
+
 function csvEscape(value) {
   return `"${String(value || "").replaceAll('"', '""')}"`;
 }
@@ -310,12 +344,15 @@ function exportCsv() {
 
 async function exportJson() {
   const exportedAt = new Date().toISOString();
+  const filename = `poi-app-tracker-backup-${exportedAt.slice(0, 10)}.json`;
   const payload = buildBackupPayload(exportedAt);
-  downloadText(
-    `poi-app-tracker-backup-${exportedAt.slice(0, 10)}.json`,
-    JSON.stringify(payload, null, 2),
-    "application/json;charset=utf-8"
-  );
+  const text = JSON.stringify(payload, null, 2);
+  const saveResult = await saveJsonBackupFile(filename, text);
+
+  if (saveResult.canceled) {
+    $("#backupMessage").textContent = "バックアップJSONの保存をキャンセルしました。";
+    return;
+  }
 
   const meta = await getBackupMeta();
   await setBackupMeta({
@@ -326,7 +363,9 @@ async function exportJson() {
     lastBackupItemCount: allItems.length,
     backupNoticeDismissedForVersion: APP_VERSION
   });
-  $("#backupMessage").textContent = "バックアップJSONを出力しました。";
+  $("#backupMessage").textContent = saveResult.method === "picker"
+    ? "バックアップJSONを保存しました。"
+    : "バックアップJSONを通常ダウンロードとして出力しました。保存先はChromeのダウンロード設定に従います。";
   await renderBackupSafety();
 }
 
