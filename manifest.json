@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "アプリ進行中",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "ポイ活ゲームアプリ案件のインストール日・期限・報酬・進行ログをローカルで記録します。",
   "permissions": [
     "activeTab",

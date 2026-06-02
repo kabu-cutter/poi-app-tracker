@@ -72,30 +72,70 @@ function cleanAppNameCandidate(value) {
 
   text = stripKnownSiteWords(text);
   text = text
-    .replace(/案件詳細/g, "")
-    .replace(/案件ページ/g, "")
-    .replace(/ゲーム案件/g, "")
-    .replace(/アプリ案件/g, "")
-    .replace(/ポイ活/g, "")
-    .replace(/攻略/g, "")
+    .replace(/[【】\[\]「」『』]/g, " ")
+    .replace(/案件詳細|案件ページ|案件名|ゲーム案件|アプリ案件/g, " ")
+    .replace(/ポイ活|ポイントサイト|ポイント|攻略|無料|スマホゲーム/g, " ")
     .replace(/報酬[：: ]?.*$/g, "")
-    .replace(/ポイント[：: ]?.*$/g, "")
+    .replace(/獲得[：: ]?.*$/g, "")
+    .replace(/\d[\d,\.]*\s*(円|pt|pts|p|ポイント).*$/gi, "")
     .replace(/\d+\s*(日|days?)\s*(以内|within).*$/gi, "")
-    .replace(/(以内|達成|到達|クリア|承認|インストール).*$/g, "")
+    .replace(/\s*(インストール|達成|到達|クリア|承認|成果|条件|参加|プレイ|reach).*$/g, "")
     .replace(/^[\s\-–—_＿:：|｜/／]+|[\s\-–—_＿:：|｜/／]+$/g, "");
 
   return normalizeSpaces(text);
+}
+
+function normalizeCandidateKey(value) {
+  return cleanAppNameCandidate(value)
+    .toLowerCase()
+    .replace(/ios/g, "ios")
+    .replace(/android/g, "android")
+    .replace(/[\s\u3000・･\-–—_＿:：|｜/／【】\[\]「」『』()（）.,]/g, "");
+}
+
+function getCandidateTokens(value) {
+  return cleanAppNameCandidate(value)
+    .toLowerCase()
+    .split(/[\s\u3000・･\-–—_＿:：|｜/／()（）.,]+/)
+    .filter((token) => token && token.length >= 2);
+}
+
+function candidateSimilarity(a, b) {
+  const aKey = normalizeCandidateKey(a);
+  const bKey = normalizeCandidateKey(b);
+  if (!aKey || !bKey) return 0;
+  if (aKey === bKey) return 1;
+  if (aKey.includes(bKey) || bKey.includes(aKey)) return 0.85;
+
+  const aTokens = new Set(getCandidateTokens(a));
+  const bTokens = new Set(getCandidateTokens(b));
+  if (!aTokens.size || !bTokens.size) return 0;
+
+  let overlap = 0;
+  aTokens.forEach((token) => {
+    if (bTokens.has(token)) overlap += 1;
+  });
+
+  return overlap / Math.max(aTokens.size, bTokens.size);
 }
 
 function scoreAppNameCandidate(value) {
   const text = cleanAppNameCandidate(value);
   if (!text) return -100;
 
-  let score = Math.min(text.length, 30);
-  if (/案件|詳細|ポイ活|ポイント|報酬|条件/.test(text)) score -= 20;
-  if (/^https?:\/\//i.test(text)) score -= 30;
-  if (/^[0-9,\.]+\s*(円|pt|p)$/i.test(text)) score -= 20;
-  if (text.length <= 1) score -= 20;
+  let score = 30;
+  const length = text.length;
+  const tokens = getCandidateTokens(text);
+
+  if (length >= 3 && length <= 36) score += 18;
+  if (length > 48) score -= 18;
+  if (tokens.length >= 1 && tokens.length <= 5) score += 10;
+  if (/案件|詳細|ポイ活|ポイント|報酬|条件|キャンペーン/.test(text)) score -= 25;
+  if (/^https?:\/\//i.test(text)) score -= 40;
+  if (/^[0-9,\.]+\s*(円|pt|pts|p)$/i.test(text)) score -= 30;
+  if (/^[a-z0-9]{10,}$/i.test(text) && /\d/.test(text)) score -= 25;
+  if (text.length <= 1) score -= 30;
+
   return score;
 }
 
@@ -107,16 +147,98 @@ function decodeUrlText(value) {
   }
 }
 
-function cleanUrlAppNameCandidate(value) {
-  let text = decodeUrlText(value)
-    .replace(/\.[a-z0-9]{2,5}$/i, "")
-    .replace(/[\-_]+/g, " ")
-    .replace(/\b(android|ios|iphone|ipad|campaign|cp|offer|offers|detail|details|point|points|poikatsu|reward|rewards|app|apps|game|games|lp|ad|ads|pr)\b/gi, " ")
-    .replace(/\b(chapter|chap|level|lv|stage)\s*\d+\b/gi, " ")
-    .replace(/^[0-9a-f]{8,}$/i, "")
-    .replace(/^\d+$/, "");
+const URL_STOP_WORDS = new Set([
+  "ja", "jp", "en", "us", "pc", "sp", "www", "m", "mobile",
+  "offer", "offers", "detail", "details", "campaign", "campaigns", "cp",
+  "point", "points", "poikatsu", "reward", "rewards", "ad", "ads", "pr",
+  "app", "apps", "game", "games", "lp", "item", "items", "entry", "entries",
+  "show", "view", "open", "click", "redirect", "link", "tracking", "track"
+]);
 
+function isLikelyUrlIdToken(token) {
+  const text = String(token || "").toLowerCase();
+  if (!text) return true;
+  if (/^\d+$/.test(text)) return true;
+  if (/^[0-9a-f]{8,}$/.test(text)) return true;
+  if (/^[a-z0-9]{5,}$/.test(text) && /\d/.test(text) && /[a-z]/.test(text)) return true;
+  if (text.length >= 16 && /^[a-z0-9]+$/.test(text)) return true;
+  return false;
+}
+
+function normalizeUrlCandidateToken(token) {
+  const raw = String(token || "").trim();
+  const lower = raw.toLowerCase();
+  if (!raw || URL_STOP_WORDS.has(lower) || isLikelyUrlIdToken(lower)) return "";
+  if (lower === "ios") return "iOS";
+  if (lower === "iphone") return "iPhone";
+  if (lower === "ipad") return "iPad";
+  if (lower === "android") return "Android";
+  if (lower === "rpg") return "RPG";
+  return raw;
+}
+
+function titleCaseUrlText(value) {
+  return normalizeSpaces(value)
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (["ios", "iphone", "ipad", "android", "rpg"].includes(lower)) {
+        return normalizeUrlCandidateToken(lower);
+      }
+      if (/^[a-z][a-z0-9']*$/i.test(word)) {
+        return lower.charAt(0).toUpperCase() + lower.slice(1);
+      }
+      return word;
+    })
+    .join(" ");
+}
+
+function cleanUrlAppNameCandidate(value) {
+  const decoded = decodeUrlText(value)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[\-_+.]+/g, " ");
+
+  const tokens = decoded
+    .split(/\s+/)
+    .map(normalizeUrlCandidateToken)
+    .filter(Boolean);
+
+  const text = titleCaseUrlText(tokens.join(" "));
   return cleanAppNameCandidate(text);
+}
+
+function makeAppNameCandidate(value, source, score, reason) {
+  const cleaned = source.startsWith("url") ? cleanUrlAppNameCandidate(value) : cleanAppNameCandidate(value);
+  if (!cleaned) return null;
+  if (/^(iOS|iPhone|iPad|Android)$/i.test(cleaned)) return null;
+
+  const qualityScore = scoreAppNameCandidate(cleaned);
+  if (qualityScore <= 0) return null;
+
+  return {
+    value: cleaned,
+    source,
+    score: score + qualityScore,
+    reason
+  };
+}
+
+function getTitleAppNameCandidates(title) {
+  const candidates = [];
+  const original = normalizeSpaces(title);
+  if (!original) return candidates;
+
+  const whole = makeAppNameCandidate(original, "title", 70, "ページタイトル全体から候補にしました。");
+  if (whole) candidates.push(whole);
+
+  original
+    .split(/\s*[|｜]\s*|\s+[-–—]\s+|\s*[：:]\s*|\s*[／/]\s*/)
+    .map((part) => makeAppNameCandidate(part, "title-segment", 88, "ページタイトルの一部から候補にしました。"))
+    .filter(Boolean)
+    .forEach((candidate) => candidates.push(candidate));
+
+  return candidates;
 }
 
 function getUrlAppNameCandidates(url) {
@@ -136,59 +258,60 @@ function getUrlAppNameCandidates(url) {
       "name",
       "product",
       "product_name",
-      "offer_name"
+      "offer_name",
+      "campaign_name"
     ];
 
     usefulParamKeys.forEach((key) => {
       const value = parsed.searchParams.get(key);
-      const candidate = cleanUrlAppNameCandidate(value);
+      const candidate = makeAppNameCandidate(value, "url-param", 82, "元ページURLのパラメータから候補にしました。");
       if (candidate) candidates.push(candidate);
     });
 
-    parsed.pathname
-      .split("/")
-      .map(cleanUrlAppNameCandidate)
-      .filter(Boolean)
-      .forEach((candidate) => candidates.push(candidate));
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    pathParts.forEach((part, index) => {
+      const candidate = makeAppNameCandidate(part, "url-path", 58 + index, "元ページURLのパスから候補にしました。");
+      if (candidate) candidates.push(candidate);
+    });
   } catch {
     normalizeSpaces(url)
       .split(/[/?#&=]+/)
-      .map(cleanUrlAppNameCandidate)
+      .map((part) => makeAppNameCandidate(part, "url-text", 48, "元ページURLの文字列から候補にしました。"))
       .filter(Boolean)
       .forEach((candidate) => candidates.push(candidate));
   }
 
-  return candidates.filter((candidate) => scoreAppNameCandidate(candidate) > 0);
+  return candidates;
+}
+
+function buildAppNameSuggestions(title, url = "") {
+  const titleCandidates = getTitleAppNameCandidates(title);
+  const urlCandidates = getUrlAppNameCandidates(url);
+  const allCandidates = [...titleCandidates, ...urlCandidates];
+
+  allCandidates.forEach((candidate) => {
+    const oppositeCandidates = candidate.source.startsWith("url") ? titleCandidates : urlCandidates;
+    const hasCloseMatch = oppositeCandidates.some((other) => candidateSimilarity(candidate.value, other.value) >= 0.85);
+    if (hasCloseMatch) {
+      candidate.score += 30;
+      candidate.reason = `${candidate.reason} ページタイトルとURLの両方に近い名前があるため、候補として強めに扱います。`;
+    }
+  });
+
+  const bestByKey = new Map();
+  allCandidates.forEach((candidate) => {
+    const key = normalizeCandidateKey(candidate.value);
+    if (!key) return;
+    const current = bestByKey.get(key);
+    if (!current || candidate.score > current.score) bestByKey.set(key, candidate);
+  });
+
+  return [...bestByKey.values()].sort((a, b) => b.score - a.score);
 }
 
 function guessAppName(title, url = "") {
-  const original = normalizeSpaces(title);
-  const titleCandidates = [];
-
-  if (original) {
-    titleCandidates.push(cleanAppNameCandidate(original));
-    original
-      .split(/\s*[|｜]\s*|\s+[-–—]\s+|\s*[：:]\s*/)
-      .map(cleanAppNameCandidate)
-      .filter(Boolean)
-      .forEach((candidate) => titleCandidates.push(candidate));
-  }
-
-  const urlCandidates = getUrlAppNameCandidates(url);
-  const candidates = [...titleCandidates, ...urlCandidates]
-    .map((candidate) => candidate.replace(/[【】\[\]「」]/g, "").trim())
-    .filter(Boolean);
-
-  if (!candidates.length) return "";
-
-  const uniqueCandidates = [...new Set(candidates)];
-  uniqueCandidates.sort((a, b) => {
-    const aUrlBoost = urlCandidates.includes(a) ? 6 : 0;
-    const bUrlBoost = urlCandidates.includes(b) ? 6 : 0;
-    return (scoreAppNameCandidate(b) + bUrlBoost) - (scoreAppNameCandidate(a) + aUrlBoost);
-  });
-
-  return uniqueCandidates[0] || "";
+  const suggestions = buildAppNameSuggestions(title, url);
+  return suggestions[0]?.value || "";
 }
 
 function guessSiteName(url) {
@@ -283,6 +406,23 @@ function renderDiscardButton(type, value) {
   return `<button type="button" class="secondary compact suggestion-discard" data-discard-hint="${escapeAttribute(type)}" data-discard-value="${escapeAttribute(value)}">Discard</button>`;
 }
 
+function renderAppNameSuggestion(candidate, type) {
+  if (!candidate || !candidate.value || isHintDismissed(type, candidate.value)) return "";
+  const label = candidate.source.startsWith("url") ? "URLからのアプリ名候補" : "アプリ名候補";
+  return `
+      <div class="suggestion-item suggestion-info">
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          <p>${escapeHtml(candidate.reason)} 「${escapeHtml(candidate.value)}」を候補にしました。</p>
+        </div>
+        <div class="suggestion-actions">
+          <button type="button" class="secondary compact" data-apply-app-name="${escapeAttribute(candidate.value)}">候補を使う</button>
+          ${renderDiscardButton(type, candidate.value)}
+        </div>
+      </div>
+    `;
+}
+
 function renderRegistrationHints() {
   const container = $("#registrationHints");
   const list = $("#registrationHintList");
@@ -292,25 +432,29 @@ function renderRegistrationHints() {
   const appName = getValue("appName");
   const url = getValue("url");
   const siteName = getValue("siteName");
-  const suggestedAppName = guessAppName(title, url);
+  const appNameSuggestions = buildAppNameSuggestions(title, url);
+  const primaryAppNameSuggestion = appNameSuggestions[0] || null;
+  const suggestedAppName = primaryAppNameSuggestion?.value || "";
+  const urlAppNameSuggestion = appNameSuggestions.find((candidate) => {
+    if (!candidate.source.startsWith("url")) return false;
+    if (!candidate.value) return false;
+    if (candidate.value === appName) return false;
+    if (candidate.value === suggestedAppName) return false;
+    return candidateSimilarity(candidate.value, appName || suggestedAppName) < 0.85;
+  });
   const suggestedSiteName = guessSiteName(url);
   const duplicateUrlItems = findDuplicateUrlItems(url);
   const sameAppItems = findSameAppItems(appName || suggestedAppName);
   const hints = [];
 
-  if (suggestedAppName && suggestedAppName !== appName && !isHintDismissed("app-name", suggestedAppName)) {
-    hints.push(`
-      <div class="suggestion-item suggestion-info">
-        <div>
-          <strong>アプリ名候補</strong>
-          <p>ページタイトルと元ページURLから「${escapeHtml(suggestedAppName)}」を候補にしました。</p>
-        </div>
-        <div class="suggestion-actions">
-          <button type="button" class="secondary compact" data-apply-app-name="${escapeAttribute(suggestedAppName)}">候補を使う</button>
-          ${renderDiscardButton("app-name", suggestedAppName)}
-        </div>
-      </div>
-    `);
+  if (primaryAppNameSuggestion && suggestedAppName !== appName) {
+    const hint = renderAppNameSuggestion(primaryAppNameSuggestion, "app-name");
+    if (hint) hints.push(hint);
+  }
+
+  if (urlAppNameSuggestion) {
+    const hint = renderAppNameSuggestion(urlAppNameSuggestion, "url-app-name");
+    if (hint) hints.push(hint);
   }
 
   if (suggestedSiteName && suggestedSiteName !== siteName && !isHintDismissed("site-name", suggestedSiteName)) {
@@ -523,7 +667,10 @@ fields.forEach((field) => {
 
   element.addEventListener("input", () => {
     if (field === "title") maybeUpdateAppNameFromTitle();
-    if (field === "url") maybeUpdateSiteNameFromUrl();
+    if (field === "url") {
+      maybeUpdateSiteNameFromUrl();
+      maybeUpdateAppNameFromTitle();
+    }
     updatePreview();
   });
 });
